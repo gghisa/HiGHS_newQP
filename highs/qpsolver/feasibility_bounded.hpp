@@ -100,6 +100,7 @@ static void computeStartingPointBounded(Instance& instance, Settings& settings,
   if (initialactive.size() == 0) {
     modelstatus = QpModelStatus::kOptimal;
   }
+  // do active bounds imply the solution is not optimal? afterall we solved the whole problem directly...
 
   assert((HighsInt)(initialactive.size() + initialinactive.size()) ==
          instance.num_var);

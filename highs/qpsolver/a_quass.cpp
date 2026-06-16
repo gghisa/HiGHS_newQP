@@ -154,8 +154,9 @@ QpAsmStatus solveqp(Instance& instance, Settings& settings, Statistics& stats,
   // compute initial feasible point
   QpHotstartInformation startinfo(instance.num_var, instance.num_con);
   if (instance.num_con == 0 && instance.num_var <= 15000) {
+    // if there are no general constraints (bounds only) and the number of variables is small enough
     computeStartingPointBounded(instance, settings, stats, qp_model_status,
-                                startinfo, qp_timer);
+                                startinfo, qp_timer); // can totally reuse this function
     if (qp_model_status == QpModelStatus::kOptimal) {
       qp_solution.primal = startinfo.primal;
       return quass2highs(instance, settings, stats, qp_model_status,
@@ -167,7 +168,9 @@ QpAsmStatus solveqp(Instance& instance, Settings& settings, Statistics& stats,
                          qp_solution, highs_model_status, highs_basis,
                          highs_solution);
     }
-  } else {
+  } 
+  else
+  { // if there are too many variables or there is at least one constraint
     computeStartingPointHighs(instance, settings, stats, qp_model_status,
                               startinfo, highs_model_status, highs_basis,
                               highs_solution, qp_timer);

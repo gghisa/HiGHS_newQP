@@ -12,7 +12,7 @@
 #include "qpsolver/a_asm.hpp"
 #include "qpsolver/crashsolution.hpp"
 
-static void computeStartingPointHighs(
+static void computeStartingPointHighs( // need to study this function
     Instance& instance, Settings& settings, Statistics& stats,
     QpModelStatus& modelstatus, QpHotstartInformation& result,
     HighsModelStatus& highs_model_status, HighsBasis& highs_basis,

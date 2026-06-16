@@ -4010,12 +4010,16 @@ HighsStatus Highs::callSolveQp() {
     sub_solver_call_time_.num_call[kSubSolverQpAsm]++;
     sub_solver_call_time_.run_time[kSubSolverQpAsm] = -timer_.read();
 
-    Instance instance(lp.num_col_, lp.num_row_);
+    // Insert your own ASM solver here
 
+    // save solution information in solution_
+    // Return!
+
+    // Code here takes the lp instance and converts it to the Micheal's instance
+    Instance instance(lp.num_col_, lp.num_row_);
     instance.sense = HighsInt(lp.sense_);
     instance.num_con = lp.num_row_;
     instance.num_var = lp.num_col_;
-
     instance.A.mat.num_col = lp.num_col_;
     instance.A.mat.num_row = lp.num_row_;
     instance.A.mat.start = lp.a_matrix_.start_;
@@ -4027,17 +4031,20 @@ HighsStatus Highs::callSolveQp() {
     instance.con_up = lp.row_upper_;
     instance.var_lo = lp.col_lower_;
     instance.var_up = lp.col_upper_;
-    instance.Q.mat.num_col = lp.num_col_;
+    instance.Q.mat.num_col = lp.num_col_; // we could use the hessian in the same way HiPo does, storing only the triangular
     instance.Q.mat.num_row = lp.num_col_;
-    triangularToSquareHessian(hessian, instance.Q.mat.start,
+    triangularToSquareHessian(hessian, instance.Q.mat.start, // avoid this step
                               instance.Q.mat.index, instance.Q.mat.value);
 
-    for (HighsInt i = 0; i < (HighsInt)instance.c.value.size(); i++) {
-      if (instance.c.value[i] != 0.0) {
-        instance.c.index[instance.c.num_nz++] = i;
+    // store cost vector indexes (are there lp.col_cost_ indexes? why are we storing the nonzero entries?)
+    for (HighsInt i = 0; i < (HighsInt)instance.c.value.size(); i++) { // for each element of the cost vector
+      if (instance.c.value[i] != 0.0) { // if the cost vector is non zero
+        instance.c.index[instance.c.num_nz++] = i; // store nonzero index
       }
     }
 
+    // how would we handle maximisation? take opposite pricing at constraint deactivation
+    // does the reduced problem not change if the hessian is concave?
     if (lp.sense_ == ObjSense::kMaximize) {
       // Negate the vector and Hessian
       for (double& i : instance.c.value) {
@@ -4048,9 +4055,9 @@ HighsStatus Highs::callSolveQp() {
       }
     }
 
+    // micheal defined properties
     Settings settings;
     Statistics stats;
-
     settings.reportingfequency = 100;
     if (options_.qp_iteration_limit <= 10) {
       settings.reportingfequency = 1;
@@ -4065,15 +4072,15 @@ HighsStatus Highs::callSolveQp() {
                    int(settings.reinvertfrequency), int(qp_update_limit));
       settings.reinvertfrequency = qp_update_limit;
     }
-
     settings.iteration_limit = options_.qp_iteration_limit;
     settings.nullspace_limit = options_.qp_nullspace_limit;
     assert(settings.hessian_regularization_value ==
            kHessianRegularizationValue);
     settings.hessian_regularization_value = options_.qp_regularization_value;
 
+    // LOGGING
     // Define the QP model status logging function
-    settings.qp_model_status_log.subscribe(
+    settings.qp_model_status_log.subscribe( // need to understand this subscribe mechanism
         [this](QpModelStatus& qp_model_status) {
           if (qp_model_status == QpModelStatus::kUndetermined ||
               qp_model_status == QpModelStatus::kLargeNullspace ||
@@ -4083,7 +4090,6 @@ HighsStatus Highs::callSolveQp() {
                          "QP solver model status: %s\n",
                          qpModelStatusToString(qp_model_status).c_str());
         });
-
     // Define the QP solver iteration logging function
     settings.iteration_log.subscribe([this](Statistics& stats) {
       int rep = stats.iteration.size() - 1;
@@ -4096,14 +4102,12 @@ HighsStatus Highs::callSolveQp() {
                    stats.objval[rep], int(stats.nullspacedimension[rep]),
                    time_string.c_str());
     });
-
     // Define the QP nullspace limit logging function
     settings.nullspace_limit_log.subscribe([this](HighsInt& nullspace_limit) {
       highsLogUser(options_.log_options, HighsLogType::kError,
                    "QP solver has exceeded nullspace limit of %d\n",
                    int(nullspace_limit));
     });
-
     // Define the degeneracy failure logging function
     settings.degeneracy_fail_log.subscribe(
         [this](std::pair<HighsInt, double>& degeneracy_fail_data) {
@@ -4114,10 +4118,11 @@ HighsStatus Highs::callSolveQp() {
                        int(degeneracy_fail_data.first),
                        degeneracy_fail_data.second);
         });
-
+      
+    // more settings options
     settings.time_limit = options_.time_limit;
     settings.lambda_zero_threshold = options_.dual_feasibility_tolerance;
-
+    // different pricing strategies we can get rid of. What did micheal find with steepest edge?
     switch (options_.simplex_primal_edge_weight_strategy) {
       case 0:
         settings.pricing = PricingStrategy::DantzigWolfe;
@@ -4133,21 +4138,22 @@ HighsStatus Highs::callSolveQp() {
     }
 
     // print header for QP solver output
-    highsLogUser(options_.log_options, HighsLogType::kInfo,
+    highsLogUser(options_.log_options, HighsLogType::kInfo, // Function is HiGHS-defined, not Micheal specific, may need to reuse
                  "  Iteration        Objective     NullspaceDim\n");
 
+    // calling QP solver
     QpAsmStatus status = solveqp(instance, settings, stats, model_status_,
                                  basis_, solution_, timer_);
     sub_solver_call_time_.run_time[kSubSolverQpAsm] += timer_.read();
 
+
+    // Cleaning up after QP solver
     // QP solver can fail, so should return something other than
     // QpAsmStatus::kOk
     if (status == QpAsmStatus::kError) return HighsStatus::kError;
-
     assert(status == QpAsmStatus::kOk || status == QpAsmStatus::kWarning);
     return_status = status == QpAsmStatus::kWarning ? HighsStatus::kWarning
                                                     : HighsStatus::kOk;
-
     // Set the QP-specific values of info_
     info_.simplex_iteration_count += stats.phase1_iterations;
     info_.qp_iteration_count += stats.num_iterations;
